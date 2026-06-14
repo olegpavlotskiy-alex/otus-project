@@ -118,34 +118,31 @@ The backend was generated with a single comprehensive prompt covering all 6 SQLA
 
 ---
 
-## Known Issues (found during audit)
+## Known Issues (found during audit) — Fixed
 
-### 1. Seed data: 10 categories instead of 12
+### 1. Seed data: 10 categories instead of 12 ✅ Fixed
 
-**Problem**: The specification requires 12 categories in seed data. `seed_data.py` creates only 10 categories for user1: Food & Dining, Transport, Shopping, Entertainment, Health & Fitness, Utilities, Housing, Subscriptions, Salary, Freelance. The "Final State" checklist below incorrectly stated "12 categories".
+**Problem**: `seed_data.py` had only 10 categories for user1; spec requires 12.
 
-**Impact**: Minor — all other functionality works correctly. The category CRUD is fully functional; the count is just below the specified threshold.
+**Fix**: Added `Education` (📚) and `Travel` (✈️) categories for both user1 and user2. Both users now have 12 categories each.
 
-**Fix needed**: Add 2 more categories to `seed_data.py` (e.g. Education, Travel).
+### 2. Seed data: family@example.com had no transactions ✅ Fixed
 
-### 2. Seed data: transaction count may fall below 200 in the worst case
+**Problem**: user2 (family@example.com) had 4 categories but zero transactions and no budgets, so the account appeared empty after login.
 
-**Problem**: Transaction generation uses `rng.randint(28, 35)` expenses per month plus probabilistic freelance payments (`rng.random() > 0.4`). In the theoretical worst case (28 expenses/month × 6, 0 freelance): 6×(1+28) = 174 transactions — below the 200+ requirement. The actual count with `random.Random(42)` is deterministic and higher, but the logic does not guarantee ≥200.
+**Fix**: Added full transaction generation for user2 using a separate RNG seed (`Random(99)`): 200+ transactions over 6 months in EUR, 3 budgets, 2 recurring transactions.
 
-**Impact**: With seed `42` the actual count is above 200, but the guarantee is architectural, not enforced.
+### 3. Seed data: transaction count not architecturally guaranteed to be 200+ ✅ Fixed
 
-**Fix needed**: Add a post-generation assertion or set the minimum to `rng.randint(33, 35)` to ensure the lower bound exceeds 200.
+**Problem**: `rng.randint(28, 35)` expenses/month gave a theoretical minimum of 174 (6 months × 29 with zero freelance).
 
-### 3. CI lint does not block the pipeline
+**Fix**: Changed to `rng.randint(34, 38)`. Worst case is now 6 × (1 salary + 34 expenses) = 210 transactions — above 200 even without any freelance payments.
 
-**Problem**: `.github/workflows/ci.yml` runs ruff with `|| true`, meaning lint errors are reported but never fail the job:
-```yaml
-ruff check app/ --select E,W,F --ignore E501 || true
-```
+### 4. CI lint does not block the pipeline ✅ Fixed
 
-**Impact**: The lint step is cosmetic — a PR with lint errors would still pass CI, which contradicts the "lint + tests" requirement.
+**Problem**: `ruff check ... || true` made lint errors non-blocking.
 
-**Fix needed**: Remove `|| true` so lint failures block the pipeline.
+**Fix**: Removed `|| true`. Also extracted ruff config into `backend/ruff.toml` (ignores E501 and F821 — the latter is a false positive for SQLAlchemy `Mapped[]` annotations). Fixed 5 real lint errors found in the process: 4 unused imports (F401) and 1 equality comparison to `True` (E712).
 
 ---
 
@@ -153,9 +150,9 @@ ruff check app/ --select E,W,F --ignore E501 || true
 
 - ✅ All common requirements met (CRUD, search/filter, dashboard, pagination, responsive layout)
 - ✅ All Finance Tracker-specific requirements met
-- ⚠️ Seed data: 10 categories (required 12), 200+ transactions (depends on RNG path), 3 budgets, 2 users
+- ✅ Seed data: 12 categories per user, 200+ transactions per user, 3 budgets per user, 2 users
 - ✅ 17 tests (auth × 5, categories × 4, transactions × 5, budgets × 3)
-- ⚠️ GitHub Actions CI (lint non-blocking; tests + build validation pass)
+- ✅ GitHub Actions CI (lint blocking via ruff.toml + tests + build validation)
 - ✅ `docker compose up` starts everything
 - ✅ Swagger UI at http://localhost:8000/docs
 - ✅ ARCHITECTURE.md created before any code

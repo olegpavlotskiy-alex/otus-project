@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, get_db
 from app.crud import audit_log as audit_crud
 from app.models.user import User
-from app.schemas.audit_log import AuditLogOut, PaginatedAuditLog
+from app.schemas.audit_log import PaginatedAuditLog
 
 router = APIRouter(prefix="/audit-log", tags=["audit-log"])
 

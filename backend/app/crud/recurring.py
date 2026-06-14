@@ -62,7 +62,7 @@ def get_due(db: Session) -> list[RecurringTransaction]:
     return (
         db.query(RecurringTransaction)
         .filter(
-            RecurringTransaction.is_active == True,
+            RecurringTransaction.is_active,
             RecurringTransaction.next_date <= today,
         )
         .all()

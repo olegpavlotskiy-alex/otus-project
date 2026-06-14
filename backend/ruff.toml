@@ -1,0 +1,6 @@
+[lint]
+select = ["E", "W", "F"]
+ignore = [
+    "E501",   # line too long
+    "F821",   # undefined name — false positive for SQLAlchemy Mapped[] annotations
+]

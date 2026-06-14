@@ -42,7 +42,7 @@ def seed(db: Session) -> None:
         db.add(user2)
         db.flush()
 
-    # --- Categories for user1 ---
+    # --- Categories ---
     def _get_or_create_category(user_id, name, icon, color, cat_type):
         cat = (
             db.query(Category)
@@ -62,120 +62,158 @@ def seed(db: Session) -> None:
             db.flush()
         return cat
 
-    # user1 categories
-    food_cat = _get_or_create_category(user1.id, "Food & Dining", "🍔", "#ef4444", "expense")
-    transport_cat = _get_or_create_category(user1.id, "Transport", "🚗", "#f97316", "expense")
-    shopping_cat = _get_or_create_category(user1.id, "Shopping", "🛍️", "#eab308", "expense")
-    entertainment_cat = _get_or_create_category(user1.id, "Entertainment", "🎬", "#8b5cf6", "expense")
-    health_cat = _get_or_create_category(user1.id, "Health & Fitness", "💪", "#22c55e", "expense")
-    utilities_cat = _get_or_create_category(user1.id, "Utilities", "💡", "#06b6d4", "expense")
-    housing_cat = _get_or_create_category(user1.id, "Housing", "🏠", "#64748b", "expense")
-    subscriptions_cat = _get_or_create_category(user1.id, "Subscriptions", "📱", "#ec4899", "expense")
-    salary_cat = _get_or_create_category(user1.id, "Salary", "💼", "#10b981", "income")
-    freelance_cat = _get_or_create_category(user1.id, "Freelance", "💻", "#3b82f6", "income")
+    # user1 categories (12 total)
+    food_cat          = _get_or_create_category(user1.id, "Food & Dining",    "🍔", "#ef4444", "expense")
+    transport_cat     = _get_or_create_category(user1.id, "Transport",        "🚗", "#f97316", "expense")
+    shopping_cat      = _get_or_create_category(user1.id, "Shopping",         "🛍️", "#eab308", "expense")
+    entertainment_cat = _get_or_create_category(user1.id, "Entertainment",    "🎬", "#8b5cf6", "expense")
+    health_cat        = _get_or_create_category(user1.id, "Health & Fitness", "💪", "#22c55e", "expense")
+    utilities_cat     = _get_or_create_category(user1.id, "Utilities",        "💡", "#06b6d4", "expense")
+    housing_cat       = _get_or_create_category(user1.id, "Housing",          "🏠", "#64748b", "expense")
+    subscriptions_cat = _get_or_create_category(user1.id, "Subscriptions",    "📱", "#ec4899", "expense")
+    education_cat     = _get_or_create_category(user1.id, "Education",        "📚", "#7c3aed", "expense")
+    travel_cat        = _get_or_create_category(user1.id, "Travel",           "✈️", "#0ea5e9", "expense")
+    salary_cat        = _get_or_create_category(user1.id, "Salary",           "💼", "#10b981", "income")
+    freelance_cat     = _get_or_create_category(user1.id, "Freelance",        "💻", "#3b82f6", "income")
 
-    # user2 categories
-    u2_food = _get_or_create_category(user2.id, "Food & Dining", "🍔", "#ef4444", "expense")
-    u2_transport = _get_or_create_category(user2.id, "Transport", "🚗", "#f97316", "expense")
-    u2_salary = _get_or_create_category(user2.id, "Salary", "💼", "#10b981", "income")
-    u2_shopping = _get_or_create_category(user2.id, "Shopping", "🛍️", "#eab308", "expense")
+    # user2 categories (12 total)
+    u2_food          = _get_or_create_category(user2.id, "Food & Dining",    "🍔", "#ef4444", "expense")
+    u2_transport     = _get_or_create_category(user2.id, "Transport",        "🚗", "#f97316", "expense")
+    u2_shopping      = _get_or_create_category(user2.id, "Shopping",         "🛍️", "#eab308", "expense")
+    u2_entertainment = _get_or_create_category(user2.id, "Entertainment",    "🎬", "#8b5cf6", "expense")
+    u2_health        = _get_or_create_category(user2.id, "Health & Fitness", "💪", "#22c55e", "expense")
+    u2_utilities     = _get_or_create_category(user2.id, "Utilities",        "💡", "#06b6d4", "expense")
+    u2_housing       = _get_or_create_category(user2.id, "Housing",          "🏠", "#64748b", "expense")
+    u2_subscriptions = _get_or_create_category(user2.id, "Subscriptions",    "📱", "#ec4899", "expense")
+    u2_education     = _get_or_create_category(user2.id, "Education",        "📚", "#7c3aed", "expense")
+    u2_travel        = _get_or_create_category(user2.id, "Travel",           "✈️", "#0ea5e9", "expense")
+    u2_salary        = _get_or_create_category(user2.id, "Salary",           "💼", "#10b981", "income")
+    u2_freelance     = _get_or_create_category(user2.id, "Freelance",        "💻", "#3b82f6", "income")
 
-    # --- Transactions for user1 (200+ over 6 months) ---
+    import calendar
+
     today = date.today()
 
-    expense_categories = [
-        (food_cat, 15, 120),
-        (transport_cat, 10, 80),
-        (shopping_cat, 20, 300),
-        (entertainment_cat, 10, 100),
-        (health_cat, 20, 150),
-        (utilities_cat, 50, 200),
-        (housing_cat, 800, 1500),
-        (subscriptions_cat, 5, 30),
-    ]
-
-    existing_tx_count = db.query(Transaction).filter(Transaction.user_id == user1.id).count()
-    if existing_tx_count == 0:
-        transactions_to_add = []
-
+    # --- Transactions helper ---
+    def _generate_transactions(
+        user_id,
+        salary_category,
+        freelance_category,
+        housing_category,
+        expense_categories,
+        salary_amount,
+        currency,
+        exchange_rate,
+        rng_instance,
+    ):
+        transactions = []
         for month_offset in range(6):
             target_date = today - timedelta(days=30 * month_offset)
             year = target_date.year
             month = target_date.month
-
-            import calendar
             last_day = calendar.monthrange(year, month)[1]
 
             # Salary on the 1st
-            salary_date = date(year, month, 1)
-            transactions_to_add.append(Transaction(
+            transactions.append(Transaction(
                 id=str(uuid.uuid4()),
-                user_id=user1.id,
-                category_id=salary_cat.id,
-                amount=5000.0,
-                original_amount=5000.0,
-                original_currency="USD",
-                exchange_rate=1.0,
-                date=salary_date,
+                user_id=user_id,
+                category_id=salary_category.id,
+                amount=salary_amount,
+                original_amount=salary_amount,
+                original_currency=currency,
+                exchange_rate=exchange_rate,
+                date=date(year, month, 1),
                 description="Monthly salary",
                 type="income",
             ))
 
-            # Freelance on random day (not every month)
-            if rng.random() > 0.4:
-                fl_day = rng.randint(5, 25)
-                fl_day = min(fl_day, last_day)
-                fl_amount = rng.uniform(300, 1500)
-                transactions_to_add.append(Transaction(
+            # Freelance (not every month, ~60% chance)
+            if rng_instance.random() > 0.4:
+                fl_day = min(rng_instance.randint(5, 25), last_day)
+                fl_amount = round(rng_instance.uniform(300, 1500), 2)
+                transactions.append(Transaction(
                     id=str(uuid.uuid4()),
-                    user_id=user1.id,
-                    category_id=freelance_cat.id,
-                    amount=round(fl_amount, 2),
-                    original_amount=round(fl_amount, 2),
-                    original_currency="USD",
-                    exchange_rate=1.0,
+                    user_id=user_id,
+                    category_id=freelance_category.id,
+                    amount=fl_amount,
+                    original_amount=fl_amount,
+                    original_currency=currency,
+                    exchange_rate=exchange_rate,
                     date=date(year, month, fl_day),
                     description="Freelance project payment",
                     type="income",
                 ))
 
-            # Expense transactions - roughly 30-35 per month
-            for _ in range(rng.randint(28, 35)):
-                cat, min_amt, max_amt = rng.choice(expense_categories)
-                # Housing is once per month
-                if cat == housing_cat:
+            # Expenses: 34-38 per month — guarantees 200+ per user over 6 months
+            for _ in range(rng_instance.randint(34, 38)):
+                cat, min_amt, max_amt = rng_instance.choice(expense_categories)
+                if cat == housing_category:
                     tx_day = 1
-                    tx_amount = round(rng.uniform(1200, 1400), 2)
+                    tx_amount = round(rng_instance.uniform(1200, 1400), 2)
                     desc = "Monthly rent"
                 else:
-                    tx_day = rng.randint(1, last_day)
-                    tx_amount = round(rng.uniform(min_amt, max_amt), 2)
-                    descriptions = {
-                        food_cat.id: ["Grocery store", "Restaurant", "Coffee shop", "Fast food", "Lunch delivery"],
-                        transport_cat.id: ["Gas station", "Uber ride", "Bus pass", "Parking", "Car wash"],
-                        shopping_cat.id: ["Amazon purchase", "Clothing store", "Electronics", "Home goods", "Sports gear"],
-                        entertainment_cat.id: ["Movie tickets", "Concert", "Video game", "Streaming service", "Books"],
-                        health_cat.id: ["Gym membership", "Pharmacy", "Doctor visit", "Vitamins", "Yoga class"],
-                        utilities_cat.id: ["Electric bill", "Water bill", "Internet", "Phone bill", "Gas bill"],
-                        subscriptions_cat.id: ["Netflix", "Spotify", "Adobe CC", "GitHub", "Cloud storage"],
-                    }
-                    descs = descriptions.get(cat.id, ["Purchase"])
-                    desc = rng.choice(descs)
-
-                transactions_to_add.append(Transaction(
+                    tx_day = rng_instance.randint(1, last_day)
+                    tx_amount = round(rng_instance.uniform(min_amt, max_amt), 2)
+                    desc = rng_instance.choice([
+                        "Purchase", "Payment", "Bill", "Order", "Service",
+                    ])
+                transactions.append(Transaction(
                     id=str(uuid.uuid4()),
-                    user_id=user1.id,
+                    user_id=user_id,
                     category_id=cat.id,
                     amount=tx_amount,
                     original_amount=tx_amount,
-                    original_currency="USD",
-                    exchange_rate=1.0,
+                    original_currency=currency,
+                    exchange_rate=exchange_rate,
                     date=date(year, month, min(tx_day, last_day)),
                     description=desc,
                     type="expense",
                 ))
+        return transactions
 
-        db.bulk_save_objects(transactions_to_add)
+    # --- Transactions for user1 ---
+    existing_tx_count_u1 = db.query(Transaction).filter(Transaction.user_id == user1.id).count()
+    if existing_tx_count_u1 == 0:
+        u1_expense_cats = [
+            (food_cat,          15,  120),
+            (transport_cat,     10,   80),
+            (shopping_cat,      20,  300),
+            (entertainment_cat, 10,  100),
+            (health_cat,        20,  150),
+            (utilities_cat,     50,  200),
+            (housing_cat,      800, 1500),
+            (subscriptions_cat,  5,   30),
+            (education_cat,     30,  250),
+            (travel_cat,       100,  800),
+        ]
+        txs = _generate_transactions(
+            user1.id, salary_cat, freelance_cat, housing_cat,
+            u1_expense_cats, 5000.0, "USD", 1.0, rng,
+        )
+        db.bulk_save_objects(txs)
+        db.flush()
+
+    # --- Transactions for user2 ---
+    existing_tx_count_u2 = db.query(Transaction).filter(Transaction.user_id == user2.id).count()
+    if existing_tx_count_u2 == 0:
+        rng2 = random.Random(99)  # separate seed so user2 data differs from user1
+        u2_expense_cats = [
+            (u2_food,          20,  150),
+            (u2_transport,     15,  100),
+            (u2_shopping,      30,  400),
+            (u2_entertainment, 15,  120),
+            (u2_health,        25,  180),
+            (u2_utilities,     60,  250),
+            (u2_housing,      900, 1800),
+            (u2_subscriptions,  8,   40),
+            (u2_education,     40,  300),
+            (u2_travel,       120,  900),
+        ]
+        txs2 = _generate_transactions(
+            user2.id, u2_salary, u2_freelance, u2_housing,
+            u2_expense_cats, 4500.0, "EUR", 1.08, rng2,
+        )
+        db.bulk_save_objects(txs2)
         db.flush()
 
     # --- Budgets for user1 (current month) ---
@@ -207,9 +245,14 @@ def seed(db: Session) -> None:
             db.flush()
         return budget
 
-    _get_or_create_budget(user1.id, food_cat.id, this_year, this_month, 800.0)
-    _get_or_create_budget(user1.id, transport_cat.id, this_year, this_month, 300.0)
+    _get_or_create_budget(user1.id, food_cat.id,          this_year, this_month, 800.0)
+    _get_or_create_budget(user1.id, transport_cat.id,     this_year, this_month, 300.0)
     _get_or_create_budget(user1.id, entertainment_cat.id, this_year, this_month, 200.0)
+
+    # --- Budgets for user2 (current month) ---
+    _get_or_create_budget(user2.id, u2_food.id,      this_year, this_month, 700.0,  "EUR")
+    _get_or_create_budget(user2.id, u2_housing.id,   this_year, this_month, 1500.0, "EUR")
+    _get_or_create_budget(user2.id, u2_shopping.id,  this_year, this_month, 400.0,  "EUR")
 
     # --- Recurring transactions for user1 ---
     def _get_or_create_recurring(user_id, category_id, amount, currency, description, tx_type, frequency, next_date):
@@ -253,6 +296,18 @@ def seed(db: Session) -> None:
     )
     _get_or_create_recurring(
         user1.id, salary_cat.id, 5000.0, "USD",
+        "Monthly salary", "income", "monthly",
+        next_month_date.replace(day=1),
+    )
+
+    # --- Recurring transactions for user2 ---
+    _get_or_create_recurring(
+        user2.id, u2_subscriptions.id, 12.99, "EUR",
+        "Streaming service", "expense", "monthly",
+        date(today.year, today.month, 10) if today.day < 10 else next_month_date.replace(day=10),
+    )
+    _get_or_create_recurring(
+        user2.id, u2_salary.id, 4500.0, "EUR",
         "Monthly salary", "income", "monthly",
         next_month_date.replace(day=1),
     )
