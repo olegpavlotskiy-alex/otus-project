@@ -118,13 +118,44 @@ The backend was generated with a single comprehensive prompt covering all 6 SQLA
 
 ---
 
+## Known Issues (found during audit)
+
+### 1. Seed data: 10 categories instead of 12
+
+**Problem**: The specification requires 12 categories in seed data. `seed_data.py` creates only 10 categories for user1: Food & Dining, Transport, Shopping, Entertainment, Health & Fitness, Utilities, Housing, Subscriptions, Salary, Freelance. The "Final State" checklist below incorrectly stated "12 categories".
+
+**Impact**: Minor — all other functionality works correctly. The category CRUD is fully functional; the count is just below the specified threshold.
+
+**Fix needed**: Add 2 more categories to `seed_data.py` (e.g. Education, Travel).
+
+### 2. Seed data: transaction count may fall below 200 in the worst case
+
+**Problem**: Transaction generation uses `rng.randint(28, 35)` expenses per month plus probabilistic freelance payments (`rng.random() > 0.4`). In the theoretical worst case (28 expenses/month × 6, 0 freelance): 6×(1+28) = 174 transactions — below the 200+ requirement. The actual count with `random.Random(42)` is deterministic and higher, but the logic does not guarantee ≥200.
+
+**Impact**: With seed `42` the actual count is above 200, but the guarantee is architectural, not enforced.
+
+**Fix needed**: Add a post-generation assertion or set the minimum to `rng.randint(33, 35)` to ensure the lower bound exceeds 200.
+
+### 3. CI lint does not block the pipeline
+
+**Problem**: `.github/workflows/ci.yml` runs ruff with `|| true`, meaning lint errors are reported but never fail the job:
+```yaml
+ruff check app/ --select E,W,F --ignore E501 || true
+```
+
+**Impact**: The lint step is cosmetic — a PR with lint errors would still pass CI, which contradicts the "lint + tests" requirement.
+
+**Fix needed**: Remove `|| true` so lint failures block the pipeline.
+
+---
+
 ## Final State
 
 - ✅ All common requirements met (CRUD, search/filter, dashboard, pagination, responsive layout)
 - ✅ All Finance Tracker-specific requirements met
-- ✅ 200+ seed transactions, 12 categories, 3 budgets, 2 users
+- ⚠️ Seed data: 10 categories (required 12), 200+ transactions (depends on RNG path), 3 budgets, 2 users
 - ✅ 17 tests (auth × 5, categories × 4, transactions × 5, budgets × 3)
-- ✅ GitHub Actions CI (lint + tests + build validation)
+- ⚠️ GitHub Actions CI (lint non-blocking; tests + build validation pass)
 - ✅ `docker compose up` starts everything
 - ✅ Swagger UI at http://localhost:8000/docs
 - ✅ ARCHITECTURE.md created before any code
