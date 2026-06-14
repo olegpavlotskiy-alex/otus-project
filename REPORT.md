@@ -146,6 +146,34 @@ The backend was generated with a single comprehensive prompt covering all 6 SQLA
 
 ---
 
+## Frontend Bugs (found during manual testing) — Fixed
+
+### 5. Any user sees all transactions belonging to another user ✅ Fixed
+
+**Root cause**: `QueryClient` was declared as a module-level constant in `App.jsx` — a singleton shared across the entire browser session. The `logout()` function in `AuthContext.jsx` only cleared `localStorage` but never called `queryClient.clear()`. When user1 logged out and user2 logged in, React Query returned user1's stale cached data immediately (key `['transactions', {}, 1]`) without making a new API request. The backend always filtered correctly by `user_id`; the problem was entirely on the frontend cache layer.
+
+**Fix**: Extracted `QueryClient` into a dedicated `src/queryClient.js` module so it can be imported from both `App.jsx` and `AuthContext.jsx`. Added `queryClient.clear()` call inside `logout()`.
+
+### 6. After applying category filter, 0 transactions shown ✅ Fixed
+
+**Root cause**: Direct consequence of bug 5. When user2 logged in, the `['categories']` React Query cache still held user1's categories (with user1's UUIDs). The category dropdown showed user1's categories. User2 selected one, applied the filter — the backend correctly identified user2 from JWT but found zero transactions matching `user_id = user2 AND category_id = <user1's UUID>`, returning an empty result.
+
+**Fix**: Resolved entirely by the same fix as bug 5 — `queryClient.clear()` on logout ensures categories are re-fetched for the new user.
+
+### 7. Export CSV button does nothing (silently fails) ✅ Fixed
+
+**Root cause**: Two independent defects in `handleExport` in `Transactions.jsx`:
+
+1. The anchor element created with `document.createElement('a')` was never appended to `document.body` before `.click()`. Firefox and a number of Chromium-based environments ignore `.click()` on detached (not-in-DOM) elements; the download never starts and execution falls into `catch` → "Export failed" toast.
+
+2. `URL.revokeObjectURL(url)` was called synchronously immediately after `a.click()`. Browsers initiate the download asynchronously, so the object URL was revoked before the browser had a chance to read the file, making the downloaded content empty or causing a network error.
+
+Additionally, `response.data` returned by Axios with `responseType: 'blob'` is already a `Blob`. Wrapping it in `new Blob([response.data])` was redundant (and would drop the original MIME type from the new Blob's headers).
+
+**Fix**: Append the anchor to `document.body` before clicking, remove it after, and defer `revokeObjectURL` with a short `setTimeout`. Use `response.data` directly as the argument to `URL.createObjectURL`.
+
+---
+
 ## Final State
 
 - ✅ All common requirements met (CRUD, search/filter, dashboard, pagination, responsive layout)

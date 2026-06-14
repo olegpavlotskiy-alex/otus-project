@@ -98,12 +98,14 @@ export default function Transactions() {
   const handleExport = async () => {
     try {
       const response = await exportTransactions()
-      const url = URL.createObjectURL(new Blob([response.data]))
+      const url = URL.createObjectURL(response.data)
       const a = document.createElement('a')
       a.href = url
       a.download = `transactions-${format(new Date(), 'yyyy-MM-dd')}.csv`
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 150)
       toast.success('Export downloaded')
     } catch {
       toast.error('Export failed')

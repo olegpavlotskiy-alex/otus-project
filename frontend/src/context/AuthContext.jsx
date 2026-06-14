@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 import { login as apiLogin, register as apiRegister } from '../services/api'
+import { queryClient } from '../queryClient'
 
 const AuthContext = createContext(null)
 
@@ -59,6 +60,7 @@ export const AuthProvider = ({ children }) => {
   const logout = useCallback(() => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    queryClient.clear()
     setToken(null)
     setUser(null)
   }, [])
