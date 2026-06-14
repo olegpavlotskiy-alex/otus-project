@@ -4,6 +4,8 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html
+from fastapi.responses import HTMLResponse
 
 from app.api.v1.router import api_router
 from app.db.session import Base, SessionLocal, engine
@@ -15,7 +17,7 @@ app = FastAPI(
     description="A comprehensive REST API for tracking personal finances, budgets, and transactions.",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc",
+    redoc_url=None,  # disabled — served manually below with pinned CDN version
 )
 
 # CORS middleware - allow all origins for development
@@ -70,6 +72,15 @@ def on_startup() -> None:
         logger.info("APScheduler started — recurring transactions will run every hour.")
     except Exception as exc:
         logger.warning(f"APScheduler could not start: {exc}")
+
+
+@app.get("/redoc", include_in_schema=False)
+def redoc_html() -> HTMLResponse:
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title="Personal Finance Tracker API — ReDoc",
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@2.1.3/bundles/redoc.standalone.js",
+    )
 
 
 @app.get("/health", tags=["health"])
