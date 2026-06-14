@@ -1,187 +1,187 @@
-# Development Report — Personal Finance Tracker
+# Отчёт о разработке — Трекер личных финансов
 
-## Project Overview
+## Обзор проекта
 
-This is a full-stack personal finance tracker built entirely with AI assistance (Claude Sonnet 4.6 via Claude Code CLI). The project started from a functional specification and was implemented from scratch, architecture-first.
-
----
-
-## Development History
-
-### Phase 1 — Architecture Planning (Day 1)
-
-Started with creating `ARCHITECTURE.md` before writing a single line of code, as required by the specification. This forced upfront decisions about:
-- Technology stack selection (FastAPI over Django because of automatic OpenAPI docs, Pydantic v2 integration, and no ORM ceremony)
-- Database schema design (UUID primary keys, audit log with JSONB diffs)
-- API contract definition (all 30+ endpoints documented before implementation)
-- Directory structure (clean separation: models / schemas / crud / api / services)
-
-**Key decision**: Use SQLAlchemy 2.0 sync mode with `SessionLocal` dependency injection rather than async. This significantly simplifies the code (no `async def`, no `await`, no `AsyncSession`) while meeting all functional requirements. The scheduler and CSV service are inherently blocking operations anyway.
-
-### Phase 2 — Backend Implementation (Day 1-2)
-
-Implemented 50+ Python files in parallel using the AI agent. Key implementation decisions:
-
-**Audit logging**: Instead of a middleware approach, audit log entries are created explicitly in each route handler. This is more verbose but much more transparent — you can see exactly what gets logged and control old/new values precisely.
-
-**Budget spent calculation**: `spent_amount` is not stored in the database — it's computed on-the-fly when budgets are fetched. This avoids any sync issues between transactions and budgets, at the cost of a slightly heavier query.
-
-**CSV import**: Two-phase approach — the frontend shows a column mapping form, then submits file + mapping together. The backend supports encoding fallback (UTF-8 → Latin-1) and multiple date formats.
-
-**Recurring transactions**: APScheduler runs every hour. The `next_date` advancement uses `dateutil.relativedelta` for monthly/yearly (handles month-end edge cases) and `timedelta` for daily/weekly.
-
-**Problem encountered**: The SQLAlchemy Enum type with `native_enum=True` (default) creates PostgreSQL ENUM types that conflict when running migrations multiple times. Fixed by using `native_enum=False` in all models, which stores enum values as VARCHAR — works identically in both SQLite (tests) and PostgreSQL (production).
-
-### Phase 3 — Frontend Implementation (Day 2)
-
-React 18 + Vite + Tailwind CSS stack. Key decisions:
-
-**No Redux**: React Query (TanStack) handles all server state. Local component state handles UI state (modals open/close, form inputs). This keeps the code much simpler than a Redux setup would be.
-
-**API proxy**: In development, Vite proxies `/api/*` to the backend. In production, nginx does the same. The frontend code uses baseURL `''` (empty string), so all API calls go to `/api/v1/...` relative to the current host — no environment variable switching needed.
-
-**Problem encountered**: Backend login endpoint uses JSON body (`{email, password}`), but the frontend agent initially generated OAuth2 form-data format (`username/password` URL-encoded). Fixed immediately by updating `login()` in `api.js`.
-
-**Charts**: Registered Chart.js components once globally in `App.jsx` to avoid the "chart type not registered" error when components render before the chart registry is initialized.
-
-### Phase 4 — Infrastructure (Day 2)
-
-Docker Compose configuration was straightforward. Key decisions:
-
-**Health checks**: The `db` service has a health check, and `backend` depends on it with `condition: service_healthy`. This prevents the backend from starting before PostgreSQL is ready to accept connections — a common cause of startup failures.
-
-**Frontend Dockerfile**: Multi-stage build. Stage 1 runs `npm run build` (Node.js), stage 2 copies the `dist/` folder into nginx. Final image is ~25MB vs ~1GB for a non-multi-stage Node image.
-
-**Seed data**: The `seed()` function in `seed_data.py` is idempotent — it checks if users already exist before creating anything. Called at startup in the FastAPI `on_event("startup")` handler.
+Полностековое приложение для учёта личных финансов, созданное полностью с помощью ИИ (Claude Sonnet 4.6 через Claude Code CLI). Проект начался с функциональной спецификации и был реализован с нуля по принципу «сначала архитектура».
 
 ---
 
-## Key Challenges
+## История разработки
 
-### 1. SQLite vs PostgreSQL Compatibility in Tests
+### Фаза 1 — Проектирование архитектуры (День 1)
 
-**Problem**: Tests use SQLite (in-memory, fast, no DB server needed). Production uses PostgreSQL. SQLAlchemy Enum types work differently between them.
+Первым шагом был создан файл `ARCHITECTURE.md` — до написания единой строчки кода, как того требует задание. Это вынудило заранее принять решения по:
+- Выбору технологического стека (FastAPI вместо Django: автоматическая OpenAPI-документация, интеграция Pydantic v2, отсутствие лишнего ORM-церемониала)
+- Проектированию схемы БД (UUID как первичные ключи, лог изменений с JSON-диффами)
+- Определению API-контракта (все 30+ эндпоинтов задокументированы до реализации)
+- Структуре директорий (чёткое разделение: models / schemas / crud / api / services)
 
-**Solution**: Set `native_enum=False` on all `Enum` columns. This makes enums work as VARCHAR constraints in both databases.
+**Ключевое решение**: использовать синхронный режим SQLAlchemy 2.0 с dependency injection через `SessionLocal`, а не async. Это значительно упрощает код (нет `async def`, `await`, `AsyncSession`) при полном выполнении всех функциональных требований. Планировщик и CSV-сервис по своей природе являются блокирующими операциями.
 
-### 2. APScheduler Scheduler Lifecycle
+### Фаза 2 — Реализация бэкенда (Дни 1–2)
 
-**Problem**: APScheduler's `BackgroundScheduler` needs to be shut down gracefully, otherwise it leaves daemon threads running and produces warnings on shutdown.
+Более 50 Python-файлов реализованы параллельно с помощью ИИ-агента. Ключевые решения:
 
-**Solution**: Added `atexit.register(scheduler.shutdown)` after `scheduler.start()`. APScheduler registers its own `atexit` handler by default, but being explicit avoids confusion.
+**Лог изменений**: вместо middleware-подхода записи в лог создаются явно в каждом обработчике маршрута. Это многословнее, но значительно прозрачнее — видно ровно что логируется, и можно точно управлять значениями до/после.
 
-### 3. Seed Data Volume
+**Подсчёт потраченного по бюджету**: `spent_amount` не хранится в базе данных — вычисляется на лету при запросе бюджетов. Это исключает рассинхронизацию между транзакциями и бюджетами ценой чуть более тяжёлого запроса.
 
-**Problem**: Generating 200+ realistic transactions with varied amounts, realistic patterns (salary once a month, groceries multiple times per week, etc.) is tedious by hand.
+**Импорт CSV**: двухфазный подход — фронтенд показывает форму маппинга колонок, затем отправляет файл и маппинг вместе. Бэкенд поддерживает fallback кодировки (UTF-8 → Latin-1) и несколько форматов дат.
 
-**Solution**: Used Python's `random.Random(42)` (deterministic seed) to generate transactions programmatically. Each category gets proportional spending amounts based on realistic budgets. The seed is reproducible — the same data is generated on every fresh deployment.
+**Повторяющиеся транзакции**: APScheduler запускается каждый час. Сдвиг `next_date` использует `dateutil.relativedelta` для ежемесячных/ежегодных (корректно обрабатывает конец месяца) и `timedelta` для ежедневных/еженедельных.
 
-### 4. Multi-Currency Storage
+**Проблема**: тип SQLAlchemy Enum с `native_enum=True` (по умолчанию) создаёт PostgreSQL ENUM-типы, которые конфликтуют при повторном запуске миграций. Решено использованием `native_enum=False` во всех моделях — значения enum хранятся как VARCHAR и работают одинаково в SQLite (тесты) и PostgreSQL (продакшн).
 
-**Problem**: Storing multi-currency transactions while keeping budgets and dashboard comparisons meaningful.
+### Фаза 3 — Реализация фронтенда (День 2)
 
-**Solution**: Every transaction stores both the original amount/currency AND the converted amount in the user's preferred currency. All aggregations (dashboard, budget spent) operate on the `amount` field (preferred currency). The `exchange_rate` at transaction time is stored for historical accuracy.
+Стек React 18 + Vite + Tailwind CSS. Ключевые решения:
 
----
+**Без Redux**: React Query (TanStack) управляет всем серверным состоянием. Локальное состояние компонентов управляет UI-состоянием (открытие модалок, поля форм). Это значительно проще, чем Redux.
 
-## AI Process Notes
+**API-прокси**: в разработке Vite проксирует `/api/*` на бэкенд, в продакшне то же делает nginx. Фронтенд использует baseURL `''` (пустая строка), все API-вызовы идут на `/api/v1/...` относительно текущего хоста — переключение переменных окружения не нужно.
 
-### Tools Used
+**Проблема**: эндпоинт логина на бэкенде принимает JSON-тело (`{email, password}`), но агент фронтенда изначально сгенерировал OAuth2 form-data формат (`username/password` URL-encoded). Исправлено обновлением `login()` в `api.js`. Вывод: API-контракт нужно явно указывать в промпте для фронтенда, а не просто писать «соответствовать бэкенду».
 
-- **Claude Code CLI** (claude-sonnet-4-6): Primary development tool — code generation, file creation, debugging
-- All code was generated through structured prompts describing models, behaviors, and edge cases
+**Графики**: Chart.js-компоненты зарегистрированы глобально один раз в `App.jsx`, чтобы избежать ошибки «тип графика не зарегистрирован» при рендере компонентов до инициализации реестра.
 
-### Example Prompt (Backend Models)
+### Фаза 4 — Инфраструктура (День 2)
 
-The backend was generated with a single comprehensive prompt covering all 6 SQLAlchemy models, their relationships, and constraints. The key technique: instead of asking Claude to "figure out the models", the prompt specified every field with its type, nullability, defaults, and relationships explicitly. This produced correct, production-ready code on the first attempt without any "guess what I want" iterations.
+Конфигурация Docker Compose оказалась относительно простой. Ключевые решения:
 
-**What worked well**:
-- Describing data models field-by-field (no ambiguity)
-- Specifying edge cases explicitly (SQLite/PostgreSQL enum compatibility, idempotent seeding)
-- Asking for complete files with no placeholders
-- Parallel agent execution — backend and frontend were implemented simultaneously by two separate agents
+**Health checks**: сервис `db` имеет health check, и `backend` зависит от него с `condition: service_healthy`. Это предотвращает запуск бэкенда до готовности PostgreSQL — распространённая причина ошибок при старте.
 
-**What didn't work**:
-- The frontend agent independently chose OAuth2 form-data for login without knowing the backend had already chosen JSON body. Required a manual fix. Lesson: define the API contract explicitly in the frontend prompt, not just as "match the backend".
+**Dockerfile фронтенда**: многоэтапная сборка. Этап 1 запускает `npm run build` (Node.js), этап 2 копирует папку `dist/` в nginx. Итоговый образ ~25 МБ против ~1 ГБ для одноэтапного Node-образа.
 
-### Successful Steps
-
-1. Architecture-first approach produced a clean design that required minimal rework
-2. Parallel agent execution halved the wall-clock implementation time
-3. SQLite for tests / PostgreSQL for production worked seamlessly due to `native_enum=False`
-
-### Unsuccessful / Revised Steps
-
-1. **Initial frontend login**: used wrong content type → fixed in 5 minutes
-2. **First Docker Compose version**: lacked health checks → backend started before DB was ready → fixed by adding `condition: service_healthy`
-3. **Audit log old_values**: initially serialized SQLAlchemy model instances directly → JSON serialization error → fixed to convert to dict before storing
+**Seed-данные**: функция `seed()` в `seed_data.py` идемпотентна — проверяет существование пользователей перед созданием. Вызывается при старте в обработчике `on_event("startup")` FastAPI.
 
 ---
 
-## Known Issues (found during audit) — Fixed
+## Ключевые сложности
 
-### 1. Seed data: 10 categories instead of 12 ✅ Fixed
+### 1. Совместимость SQLite и PostgreSQL в тестах
 
-**Problem**: `seed_data.py` had only 10 categories for user1; spec requires 12.
+**Проблема**: тесты используют SQLite (in-memory, быстро, не нужен сервер БД). Продакшн — PostgreSQL. Типы Enum SQLAlchemy работают по-разному в этих базах данных.
 
-**Fix**: Added `Education` (📚) and `Travel` (✈️) categories for both user1 and user2. Both users now have 12 categories each.
+**Решение**: установить `native_enum=False` для всех `Enum`-колонок. Это делает enum работающим как VARCHAR-ограничения в обеих БД.
 
-### 2. Seed data: family@example.com had no transactions ✅ Fixed
+### 2. Жизненный цикл APScheduler
 
-**Problem**: user2 (family@example.com) had 4 categories but zero transactions and no budgets, so the account appeared empty after login.
+**Проблема**: `BackgroundScheduler` из APScheduler требует корректного завершения, иначе оставляет daemon-потоки и выдаёт предупреждения при shutdown.
 
-**Fix**: Added full transaction generation for user2 using a separate RNG seed (`Random(99)`): 200+ transactions over 6 months in EUR, 3 budgets, 2 recurring transactions.
+**Решение**: добавлен `atexit.register(scheduler.shutdown)` после `scheduler.start()`. APScheduler по умолчанию регистрирует собственный `atexit`-обработчик, но явная регистрация исключает путаницу.
 
-### 3. Seed data: transaction count not architecturally guaranteed to be 200+ ✅ Fixed
+### 3. Объём seed-данных
 
-**Problem**: `rng.randint(28, 35)` expenses/month gave a theoretical minimum of 174 (6 months × 29 with zero freelance).
+**Проблема**: генерировать 200+ реалистичных транзакций с разными суммами и паттернами (зарплата раз в месяц, продукты несколько раз в неделю и т.д.) вручную утомительно.
 
-**Fix**: Changed to `rng.randint(34, 38)`. Worst case is now 6 × (1 salary + 34 expenses) = 210 transactions — above 200 even without any freelance payments.
+**Решение**: использован `random.Random(42)` с фиксированным seed для детерминированной генерации. Каждая категория получает пропорциональные суммы расходов на основе реалистичных бюджетов. Данные воспроизводимы — одинаковые данные генерируются при каждом новом развёртывании.
 
-### 4. CI lint does not block the pipeline ✅ Fixed
+### 4. Хранение мультивалютности
 
-**Problem**: `ruff check ... || true` made lint errors non-blocking.
+**Проблема**: хранение транзакций в разных валютах при сохранении осмысленности сравнений в бюджетах и дашборде.
 
-**Fix**: Removed `|| true`. Also extracted ruff config into `backend/ruff.toml` (ignores E501 and F821 — the latter is a false positive for SQLAlchemy `Mapped[]` annotations). Fixed 5 real lint errors found in the process: 4 unused imports (F401) and 1 equality comparison to `True` (E712).
-
----
-
-## Frontend Bugs (found during manual testing) — Fixed
-
-### 5. Any user sees all transactions belonging to another user ✅ Fixed
-
-**Root cause**: `QueryClient` was declared as a module-level constant in `App.jsx` — a singleton shared across the entire browser session. The `logout()` function in `AuthContext.jsx` only cleared `localStorage` but never called `queryClient.clear()`. When user1 logged out and user2 logged in, React Query returned user1's stale cached data immediately (key `['transactions', {}, 1]`) without making a new API request. The backend always filtered correctly by `user_id`; the problem was entirely on the frontend cache layer.
-
-**Fix**: Extracted `QueryClient` into a dedicated `src/queryClient.js` module so it can be imported from both `App.jsx` and `AuthContext.jsx`. Added `queryClient.clear()` call inside `logout()`.
-
-### 6. After applying category filter, 0 transactions shown ✅ Fixed
-
-**Root cause**: Direct consequence of bug 5. When user2 logged in, the `['categories']` React Query cache still held user1's categories (with user1's UUIDs). The category dropdown showed user1's categories. User2 selected one, applied the filter — the backend correctly identified user2 from JWT but found zero transactions matching `user_id = user2 AND category_id = <user1's UUID>`, returning an empty result.
-
-**Fix**: Resolved entirely by the same fix as bug 5 — `queryClient.clear()` on logout ensures categories are re-fetched for the new user.
-
-### 7. Export CSV button does nothing (silently fails) ✅ Fixed
-
-**Root cause**: Two independent defects in `handleExport` in `Transactions.jsx`:
-
-1. The anchor element created with `document.createElement('a')` was never appended to `document.body` before `.click()`. Firefox and a number of Chromium-based environments ignore `.click()` on detached (not-in-DOM) elements; the download never starts and execution falls into `catch` → "Export failed" toast.
-
-2. `URL.revokeObjectURL(url)` was called synchronously immediately after `a.click()`. Browsers initiate the download asynchronously, so the object URL was revoked before the browser had a chance to read the file, making the downloaded content empty or causing a network error.
-
-Additionally, `response.data` returned by Axios with `responseType: 'blob'` is already a `Blob`. Wrapping it in `new Blob([response.data])` was redundant (and would drop the original MIME type from the new Blob's headers).
-
-**Fix**: Append the anchor to `document.body` before clicking, remove it after, and defer `revokeObjectURL` with a short `setTimeout`. Use `response.data` directly as the argument to `URL.createObjectURL`.
+**Решение**: каждая транзакция хранит и оригинальную сумму/валюту, и конвертированную сумму в предпочтительной валюте пользователя. Все агрегации (дашборд, потраченное по бюджету) работают с полем `amount` (в предпочтительной валюте). `exchange_rate` на момент транзакции хранится для исторической точности.
 
 ---
 
-## Final State
+## Заметки об использовании ИИ
 
-- ✅ All common requirements met (CRUD, search/filter, dashboard, pagination, responsive layout)
-- ✅ All Finance Tracker-specific requirements met
-- ✅ Seed data: 12 categories per user, 200+ transactions per user, 3 budgets per user, 2 users
-- ✅ 17 tests (auth × 5, categories × 4, transactions × 5, budgets × 3)
-- ✅ GitHub Actions CI (lint blocking via ruff.toml + tests + build validation)
-- ✅ `docker compose up` starts everything
-- ✅ Swagger UI at http://localhost:8000/docs
-- ✅ ARCHITECTURE.md created before any code
-- ✅ REPORT.md maintained throughout development
+### Инструменты
+
+- **Claude Code CLI** (claude-sonnet-4-6): основной инструмент разработки — генерация кода, создание файлов, отладка
+- Весь код генерировался через структурированные промпты с описанием моделей, поведения и граничных случаев
+
+### Пример промпта (модели бэкенда)
+
+Бэкенд был сгенерирован одним комплексным промптом, охватывающим все 6 моделей SQLAlchemy, их связи и ограничения. Ключевая техника: вместо просьбы «разберись с моделями» промпт явно задавал каждое поле с типом, допустимостью NULL, значениями по умолчанию и связями. Это позволило получить готовый к продакшну код с первой попытки без итераций «угадай что я хочу».
+
+**Что сработало хорошо**:
+- Описание моделей данных поле за полем (без двусмысленности)
+- Явное указание граничных случаев (совместимость enum SQLite/PostgreSQL, идемпотентный seed)
+- Запрос полных файлов без заглушек
+- Параллельное выполнение агентов — бэкенд и фронтенд реализованы одновременно двумя отдельными агентами
+
+**Что не сработало**:
+- Агент фронтенда самостоятельно выбрал OAuth2 form-data для логина, не зная, что бэкенд уже использует JSON-тело. Потребовалось ручное исправление. Вывод: API-контракт нужно явно прописывать в промпте для фронтенда.
+
+### Удачные шаги
+
+1. Подход «сначала архитектура» дал чистый дизайн, потребовавший минимальных правок
+2. Параллельное выполнение агентов вдвое сократило время реализации
+3. SQLite для тестов / PostgreSQL для продакшна работает бесшовно благодаря `native_enum=False`
+
+### Неудачные / пересмотренные шаги
+
+1. **Первоначальный логин фронтенда**: использовал неверный content-type → исправлено за 5 минут
+2. **Первая версия Docker Compose**: отсутствовали health checks → бэкенд стартовал раньше БД → исправлено добавлением `condition: service_healthy`
+3. **old_values в логе изменений**: изначально сериализовались экземпляры моделей SQLAlchemy напрямую → ошибка сериализации JSON → исправлено конвертацией в dict перед сохранением
+
+---
+
+## Выявленные проблемы (аудит) — Исправлено
+
+### 1. Seed-данные: 10 категорий вместо 12 ✅ Исправлено
+
+**Проблема**: в `seed_data.py` у user1 было только 10 категорий, по требованию нужно 12.
+
+**Исправление**: добавлены категории `Education` (📚) и `Travel` (✈️) для обоих пользователей. У каждого пользователя теперь по 12 категорий.
+
+### 2. Seed-данные: у family@example.com не было транзакций ✅ Исправлено
+
+**Проблема**: user2 (family@example.com) имел 4 категории, но ноль транзакций и бюджетов — аккаунт выглядел пустым после входа.
+
+**Исправление**: добавлена полная генерация транзакций для user2 с отдельным seed (`Random(99)`): 200+ транзакций за 6 месяцев в EUR, 3 бюджета, 2 повторяющиеся транзакции.
+
+### 3. Seed-данные: количество транзакций архитектурно не гарантировало 200+ ✅ Исправлено
+
+**Проблема**: `rng.randint(28, 35)` расходов в месяц давало теоретический минимум 174 (6 месяцев × 29 при нулевых фрилансах).
+
+**Исправление**: изменено на `rng.randint(34, 38)`. Минимум теперь: 6 × (1 зарплата + 34 расхода) = 210 транзакций — выше 200 даже без фрилансовых выплат.
+
+### 4. CI: lint не блокировал pipeline ✅ Исправлено
+
+**Проблема**: `ruff check ... || true` делал ошибки линтера некритичными.
+
+**Исправление**: убран `|| true`. Конфигурация ruff вынесена в `backend/ruff.toml` (игнорирует E501 и F821 — последнее является ложным срабатыванием для аннотаций `Mapped[]` SQLAlchemy). Попутно исправлены 5 реальных ошибок линтера: 4 неиспользуемых импорта (F401) и одно сравнение с `True` (E712).
+
+---
+
+## Баги фронтенда (найдены при ручном тестировании) — Исправлено
+
+### 5. Любой пользователь видит транзакции другого пользователя ✅ Исправлено
+
+**Причина**: `QueryClient` был объявлен как модульная константа в `App.jsx` — синглтон на весь сеанс браузера. Функция `logout()` в `AuthContext.jsx` только чистила `localStorage`, но никогда не вызывала `queryClient.clear()`. После выхода user1 и входа user2 React Query немедленно возвращал закэшированные данные user1 (ключ `['transactions', {}, 1]`) без нового API-запроса. Бэкенд всегда корректно фильтровал по `user_id` — проблема была исключительно в кэше фронтенда.
+
+**Исправление**: `QueryClient` вынесен в отдельный модуль `src/queryClient.js` для импорта как из `App.jsx`, так и из `AuthContext.jsx`. В `logout()` добавлен вызов `queryClient.clear()`.
+
+### 6. После применения фильтра по категории показывается 0 транзакций ✅ Исправлено
+
+**Причина**: прямое следствие бага 5. При входе user2 кэш React Query по ключу `['categories']` всё ещё содержал категории user1 (с UUID user1). Дропдаун отображал категории user1. User2 выбирал одну из них, применял фильтр — бэкенд корректно идентифицировал user2 по JWT, но не находил транзакций с условием `user_id = user2 AND category_id = <UUID категории user1>`, возвращая пустой результат.
+
+**Исправление**: полностью устранено тем же исправлением, что и баг 5 — `queryClient.clear()` при выходе гарантирует повторную загрузку категорий для нового пользователя.
+
+### 7. Кнопка экспорта CSV ничего не делает (молча падает) ✅ Исправлено
+
+**Причина**: два независимых дефекта в `handleExport` в `Transactions.jsx`:
+
+1. Элемент `<a>`, созданный через `document.createElement('a')`, никогда не добавлялся в `document.body` перед вызовом `.click()`. Firefox и ряд Chromium-окружений игнорируют `.click()` у элементов, не прикреплённых к DOM; скачивание не начинается, выполнение попадает в `catch` → тост «Export failed».
+
+2. `URL.revokeObjectURL(url)` вызывался синхронно сразу после `a.click()`. Браузеры инициируют скачивание асинхронно, поэтому URL отзывался до того, как браузер успевал прочитать файл — содержимое оказывалось пустым или возникала сетевая ошибка.
+
+Дополнительно: `response.data`, возвращаемый Axios с `responseType: 'blob'`, уже является `Blob`. Оборачивание в `new Blob([response.data])` было излишним и теряло MIME-тип оригинального Blob.
+
+**Исправление**: якорный элемент добавляется в `document.body` перед кликом и удаляется после; `revokeObjectURL` отложен через `setTimeout` на 150 мс; `response.data` используется напрямую как аргумент `URL.createObjectURL`.
+
+---
+
+## Итоговое состояние
+
+- ✅ Все общие требования выполнены (CRUD, поиск/фильтрация, дашборд, пагинация, адаптивная вёрстка)
+- ✅ Все функциональные требования трекера финансов выполнены
+- ✅ Seed-данные: по 12 категорий на пользователя, 200+ транзакций на пользователя, 3 бюджета на пользователя, 2 пользователя
+- ✅ 17 тестов (auth × 5, categories × 4, transactions × 5, budgets × 3)
+- ✅ GitHub Actions CI (lint блокирующий через ruff.toml + тесты + валидация сборки)
+- ✅ `docker compose up` запускает всё приложение
+- ✅ Swagger UI на http://localhost:8000/docs
+- ✅ ARCHITECTURE.md создан до написания кода
+- ✅ REPORT.md ведётся на протяжении всей разработки
