@@ -16,6 +16,7 @@ import {
 } from '../services/api'
 import ExpensesPieChart from '../components/charts/ExpensesPieChart'
 import MonthlyTrendChart from '../components/charts/MonthlyTrendChart'
+import { useAuth } from '../context/AuthContext'
 
 const fmt = (amount, currency = 'USD') =>
   new Intl.NumberFormat('en-US', {
@@ -61,6 +62,9 @@ function LoadingCard() {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth()
+  const currency = user?.preferred_currency || 'USD'
+
   const { data: summary, isLoading: loadingSummary } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: getDashboardSummary,
@@ -110,21 +114,21 @@ export default function Dashboard() {
           <>
             <StatCard
               title="Total Balance"
-              value={fmt(balance)}
+              value={fmt(balance, currency)}
               icon={Wallet}
               color={balance >= 0 ? 'bg-indigo-500' : 'bg-red-500'}
               sub="All time income − expense"
             />
             <StatCard
               title="Monthly Income"
-              value={fmt(summary?.current_month_income)}
+              value={fmt(summary?.current_month_income, currency)}
               icon={TrendingUp}
               color="bg-green-500"
               sub="Current month"
             />
             <StatCard
               title="Monthly Expense"
-              value={fmt(summary?.current_month_expense)}
+              value={fmt(summary?.current_month_expense, currency)}
               icon={TrendingDown}
               color="bg-red-500"
               sub="Current month"
@@ -151,7 +155,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="max-w-xs mx-auto">
-              <ExpensesPieChart data={expensesByCategory} />
+              <ExpensesPieChart data={expensesByCategory} currency={currency} />
             </div>
           )}
         </div>
@@ -164,7 +168,7 @@ export default function Dashboard() {
               <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full" />
             </div>
           ) : (
-            <MonthlyTrendChart data={monthlyTrend} />
+            <MonthlyTrendChart data={monthlyTrend} currency={currency} />
           )}
         </div>
       </div>
@@ -208,7 +212,7 @@ export default function Dashboard() {
                         {cat.category_name}
                       </span>
                     </div>
-                    <span className="text-sm font-semibold text-slate-800">{fmt(cat.total_amount)}</span>
+                    <span className="text-sm font-semibold text-slate-800">{fmt(cat.total_amount, currency)}</span>
                   </div>
                   <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                     <div

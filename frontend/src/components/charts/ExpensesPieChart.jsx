@@ -14,7 +14,7 @@ const DEFAULT_COLORS = [
   '#06b6d4', '#f97316', '#84cc16', '#ec4899', '#14b8a6',
 ]
 
-export default function ExpensesPieChart({ data = [] }) {
+export default function ExpensesPieChart({ data = [], currency = 'USD' }) {
   if (!data || data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-48 text-slate-400">
@@ -61,7 +61,7 @@ export default function ExpensesPieChart({ data = [] }) {
             const pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : 0
             const formatted = new Intl.NumberFormat('en-US', {
               style: 'currency',
-              currency: 'USD',
+              currency,
               minimumFractionDigits: 2,
             }).format(ctx.parsed)
             return ` ${ctx.label}: ${formatted} (${pct}%)`

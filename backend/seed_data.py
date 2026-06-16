@@ -209,11 +209,56 @@ def seed(db: Session) -> None:
             (u2_education,     40,  300),
             (u2_travel,       120,  900),
         ]
+        # EUR user: exchange_rate=1.0 because transactions are in preferred currency (EUR)
         txs2 = _generate_transactions(
             user2.id, u2_salary, u2_freelance, u2_housing,
-            u2_expense_cats, 4500.0, "EUR", 1.08, rng2,
+            u2_expense_cats, 4500.0, "EUR", 1.0, rng2,
         )
         db.bulk_save_objects(txs2)
+        db.flush()
+
+        # Cross-currency demo: a few USD purchases for user2 (EUR account)
+        # EUR/USD rate ≈ 0.92 means 1 USD = 0.92 EUR
+        EUR_PER_USD = 0.92
+        cross_currency_txs = [
+            Transaction(
+                id=str(uuid.uuid4()),
+                user_id=user2.id,
+                category_id=u2_travel.id,
+                original_amount=220.0,
+                original_currency="USD",
+                exchange_rate=EUR_PER_USD,
+                amount=round(220.0 * EUR_PER_USD, 2),
+                date=today - timedelta(days=15),
+                description="Hotel booking (USD)",
+                type="expense",
+            ),
+            Transaction(
+                id=str(uuid.uuid4()),
+                user_id=user2.id,
+                category_id=u2_shopping.id,
+                original_amount=89.99,
+                original_currency="USD",
+                exchange_rate=EUR_PER_USD,
+                amount=round(89.99 * EUR_PER_USD, 2),
+                date=today - timedelta(days=30),
+                description="Online purchase (USD)",
+                type="expense",
+            ),
+            Transaction(
+                id=str(uuid.uuid4()),
+                user_id=user2.id,
+                category_id=u2_freelance.id,
+                original_amount=500.0,
+                original_currency="USD",
+                exchange_rate=EUR_PER_USD,
+                amount=round(500.0 * EUR_PER_USD, 2),
+                date=today - timedelta(days=45),
+                description="Freelance payment (USD client)",
+                type="income",
+            ),
+        ]
+        db.bulk_save_objects(cross_currency_txs)
         db.flush()
 
     # --- Budgets for user1 (current month) ---

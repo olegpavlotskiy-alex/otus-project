@@ -27,11 +27,12 @@ export const AuthProvider = ({ children }) => {
     try {
       const payload = JSON.parse(atob(access_token.split('.')[1]))
       userInfo = {
-        email: payload.sub || email,
+        email: payload.email || email,
         name: payload.name || email.split('@')[0],
+        preferred_currency: payload.preferred_currency || 'USD',
       }
     } catch {
-      userInfo = { email, name: email.split('@')[0] }
+      userInfo = { email, name: email.split('@')[0], preferred_currency: 'USD' }
     }
 
     localStorage.setItem('token', access_token)
@@ -48,6 +49,7 @@ export const AuthProvider = ({ children }) => {
     const userInfo = {
       email: userData.email,
       name: userData.name,
+      preferred_currency: userData.preferred_currency || 'USD',
     }
 
     localStorage.setItem('token', access_token)

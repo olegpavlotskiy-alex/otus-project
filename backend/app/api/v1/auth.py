@@ -24,7 +24,12 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)) -> Token:
         )
     user = user_crud.create(db, user_data)
     access_token = create_access_token(
-        data={"sub": user.id},
+        data={
+            "sub": user.id,
+            "email": user.email,
+            "name": user.name,
+            "preferred_currency": user.preferred_currency,
+        },
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     return Token(access_token=access_token, token_type="bearer")
@@ -40,7 +45,12 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)) -> Token:
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token = create_access_token(
-        data={"sub": user.id},
+        data={
+            "sub": user.id,
+            "email": user.email,
+            "name": user.name,
+            "preferred_currency": user.preferred_currency,
+        },
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     return Token(access_token=access_token, token_type="bearer")

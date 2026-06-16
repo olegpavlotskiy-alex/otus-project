@@ -17,13 +17,14 @@ import {
 import { getTransactions, deleteTransaction, exportTransactions, getCategories } from '../services/api'
 import TransactionModal from '../components/TransactionModal'
 import CsvImportModal from '../components/CsvImportModal'
+import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 
-const fmt = (amount) =>
+const fmt = (amount, currency = 'USD') =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency,
     minimumFractionDigits: 2,
   }).format(amount || 0)
 
@@ -38,6 +39,8 @@ const EMPTY_FILTERS = {
 
 export default function Transactions() {
   const qc = useQueryClient()
+  const { user } = useAuth()
+  const currency = user?.preferred_currency || 'USD'
 
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [appliedFilters, setAppliedFilters] = useState(EMPTY_FILTERS)
@@ -315,7 +318,7 @@ export default function Transactions() {
                           }`}
                         >
                           {tx.type === 'income' ? '+' : '-'}
-                          {fmt(tx.amount)}
+                          {fmt(tx.amount, currency)}
                         </span>
                       </td>
                       <td className="px-4 py-3">

@@ -2,25 +2,28 @@ import React, { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { getCategories, createTransaction, updateTransaction } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'RUB', 'JPY', 'CNY', 'CAD', 'AUD', 'CHF']
 
-const DEFAULT_FORM = {
+const makeDefaultForm = (preferredCurrency = 'USD') => ({
   date: format(new Date(), 'yyyy-MM-dd'),
   category_id: '',
   type: 'expense',
   amount: '',
   original_amount: '',
-  original_currency: 'USD',
+  original_currency: preferredCurrency,
   exchange_rate: '1.0',
   description: '',
-}
+})
 
 export default function TransactionModal({ isOpen, onClose, transaction }) {
   const qc = useQueryClient()
-  const [form, setForm] = useState(DEFAULT_FORM)
+  const { user } = useAuth()
+  const preferredCurrency = user?.preferred_currency || 'USD'
+  const [form, setForm] = useState(() => makeDefaultForm(preferredCurrency))
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
 
@@ -41,23 +44,34 @@ export default function TransactionModal({ isOpen, onClose, transaction }) {
           type: transaction.type || 'expense',
           amount: transaction.amount?.toString() || '',
           original_amount: transaction.original_amount?.toString() || transaction.amount?.toString() || '',
-          original_currency: transaction.original_currency || 'USD',
+          original_currency: transaction.original_currency || preferredCurrency,
           exchange_rate: transaction.exchange_rate?.toString() || '1.0',
           description: transaction.description || '',
         })
       } else {
-        setForm(DEFAULT_FORM)
+        setForm(makeDefaultForm(preferredCurrency))
       }
       setErrors({})
     }
-  }, [isOpen, transaction])
+  }, [isOpen, transaction, preferredCurrency])
+
+  // Auto-calculate amount in preferred currency whenever original_amount or exchange_rate changes
+  useEffect(() => {
+    const orig = parseFloat(form.original_amount)
+    const rate = parseFloat(form.exchange_rate)
+    if (!isNaN(orig) && orig > 0 && !isNaN(rate) && rate > 0) {
+      const calculated = (orig * rate).toFixed(2)
+      setForm(prev => ({ ...prev, amount: calculated }))
+    }
+  }, [form.original_amount, form.exchange_rate])
 
   const filteredCategories = categories.filter((c) => c.type === form.type || !c.type)
 
   const handleCurrencyChange = (currency) => {
     const newForm = { ...form, original_currency: currency }
-    if (currency === 'USD') {
+    if (currency === preferredCurrency) {
       newForm.exchange_rate = '1.0'
+      // amount will sync via useEffect
     }
     setForm(newForm)
   }
@@ -66,7 +80,7 @@ export default function TransactionModal({ isOpen, onClose, transaction }) {
     const errs = {}
     if (!form.date) errs.date = 'Date is required'
     if (!form.category_id) errs.category_id = 'Category is required'
-    if (!form.amount || isNaN(parseFloat(form.amount)) || parseFloat(form.amount) <= 0)
+    if (!form.original_amount || isNaN(parseFloat(form.original_amount)) || parseFloat(form.original_amount) <= 0)
       errs.amount = 'Valid amount is required'
     return errs
   }
@@ -81,13 +95,16 @@ export default function TransactionModal({ isOpen, onClose, transaction }) {
     setErrors({})
     setLoading(true)
 
+    const origAmt = parseFloat(form.original_amount)
+    const rate = parseFloat(form.exchange_rate) || 1.0
     const payload = {
       date: form.date,
-      category_id: parseInt(form.category_id),
+      category_id: form.category_id,
       type: form.type,
-      amount: parseFloat(form.amount),
-      original_amount: parseFloat(form.original_amount) || parseFloat(form.amount),
+      original_amount: origAmt,
       original_currency: form.original_currency,
+      exchange_rate: rate,
+      amount: parseFloat((origAmt * rate).toFixed(2)),
       exchange_rate: parseFloat(form.exchange_rate) || 1.0,
       description: form.description,
     }
@@ -189,26 +206,10 @@ export default function TransactionModal({ isOpen, onClose, transaction }) {
             )}
           </div>
 
-          {/* Amount */}
-          <div>
-            <label className="label" htmlFor="tx-amount">Amount (USD)</label>
-            <input
-              id="tx-amount"
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              className={`input ${errors.amount ? 'border-red-400' : ''}`}
-              placeholder="0.00"
-            />
-            {errors.amount && <p className="text-red-500 text-xs mt-1">{errors.amount}</p>}
-          </div>
-
           {/* Original currency + amount */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label" htmlFor="tx-orig-currency">Original Currency</label>
+              <label className="label" htmlFor="tx-orig-currency">Currency</label>
               <select
                 id="tx-orig-currency"
                 value={form.original_currency}
@@ -221,7 +222,7 @@ export default function TransactionModal({ isOpen, onClose, transaction }) {
               </select>
             </div>
             <div>
-              <label className="label" htmlFor="tx-orig-amount">Original Amount</label>
+              <label className="label" htmlFor="tx-orig-amount">Amount</label>
               <input
                 id="tx-orig-amount"
                 type="number"
@@ -229,26 +230,48 @@ export default function TransactionModal({ isOpen, onClose, transaction }) {
                 min="0"
                 value={form.original_amount}
                 onChange={(e) => setForm({ ...form, original_amount: e.target.value })}
-                className="input"
+                className={`input ${errors.amount ? 'border-red-400' : ''}`}
                 placeholder="0.00"
               />
+              {errors.amount && <p className="text-red-500 text-xs mt-1">{errors.amount}</p>}
             </div>
           </div>
 
-          {/* Exchange rate */}
-          <div>
-            <label className="label" htmlFor="tx-rate">Exchange Rate (to USD)</label>
-            <input
-              id="tx-rate"
-              type="number"
-              step="0.0001"
-              min="0"
-              value={form.exchange_rate}
-              onChange={(e) => setForm({ ...form, exchange_rate: e.target.value })}
-              className="input"
-              placeholder="1.0"
-            />
-          </div>
+          {/* Exchange rate + converted amount */}
+          {form.original_currency !== preferredCurrency && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label" htmlFor="tx-rate">
+                  Rate (1 {form.original_currency} → {preferredCurrency})
+                </label>
+                <input
+                  id="tx-rate"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={form.exchange_rate}
+                  onChange={(e) => setForm({ ...form, exchange_rate: e.target.value })}
+                  className="input"
+                  placeholder="1.0"
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="tx-amount">
+                  Amount ({preferredCurrency})
+                </label>
+                <input
+                  id="tx-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.amount}
+                  readOnly
+                  className="input bg-slate-50 cursor-not-allowed"
+                  placeholder="auto"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Description */}
           <div>

@@ -181,6 +181,46 @@
 
 ---
 
+## Аудит мультивалютности — Исправлено
+
+По результатам анализа реализации были выявлены и устранены четыре проблемы.
+
+### 8. Preferred currency не передавалась на фронтенд ✅ Исправлено
+
+**Проблема**: JWT содержал только `sub: user.id`. `AuthContext.jsx` декодировал токен и пытался взять `payload.name`, но `preferred_currency` нигде не хранилась — на фронтенде всегда подставлялся хардкод `'USD'`.
+
+**Исправление**: в `auth.py` в оба endpoint (`/login`, `/register`) в payload токена добавлены `email`, `name`, `preferred_currency`. `AuthContext.jsx` читает `payload.preferred_currency` при декодировании и сохраняет в объект `user`. Теперь `user.preferred_currency` доступна через `useAuth()` в любом компоненте.
+
+### 9. Отображение валюты на дашборде, графиках и списке транзакций ✅ Исправлено
+
+**Проблема**: функция `fmt()` в `Dashboard.jsx`, `Transactions.jsx`, тултипы `MonthlyTrendChart.jsx` и `ExpensesPieChart.jsx` хардкодили `currency: 'USD'`. Пользователь с EUR-аккаунтом видел суммы в долларах (`$4 500`) вместо евро (`€4 500`).
+
+**Исправление**:
+- `Dashboard.jsx` и `Transactions.jsx`: получают `currency = user?.preferred_currency || 'USD'` через `useAuth()`, передают во все вызовы `fmt(amount, currency)`.
+- `MonthlyTrendChart` и `ExpensesPieChart`: принимают проп `currency`, используют его в `Intl.NumberFormat` для оси Y, тултипа и легенды.
+- `Dashboard.jsx` передаёт `currency` в оба компонента как проп.
+
+### 10. Форма транзакции не конвертировала сумму автоматически ✅ Исправлено
+
+**Проблема**: пользователь должен был вручную заполнить три поля (`original_amount`, `exchange_rate` и отдельно `amount` в основной валюте). Связи между ними не было — при вводе курса `amount` не пересчитывался. Поле `original_currency` по умолчанию было `'USD'` вне зависимости от `preferred_currency` пользователя.
+
+**Исправление** (`TransactionModal.jsx`):
+- `makeDefaultForm(preferredCurrency)` заменил константный `DEFAULT_FORM` — дефолтная валюта теперь совпадает с preferred_currency пользователя.
+- Добавлен `useEffect([form.original_amount, form.exchange_rate])`, который автоматически пересчитывает `amount = original_amount × exchange_rate` при любом изменении этих двух полей.
+- `handleCurrencyChange` сбрасывает `exchange_rate = 1.0` при выборе preferred_currency (а не только USD).
+- Блок с полями `exchange_rate` и `amount (в основной валюте)` отображается условно — только если `original_currency !== preferredCurrency`. Поле `amount` переведено в `readOnly` и вычисляется автоматически, что исключает ввод вручную несогласованных значений.
+- Метка "Exchange Rate (to USD)" заменена на динамическую: "Rate (1 {original_currency} → {preferredCurrency})".
+
+### 11. Seed-данные не демонстрировали реальную мультивалютность ✅ Исправлено
+
+**Проблема**: у user2 (`family@example.com`, EUR) все транзакции хранились с `exchange_rate = 1.08`, хотя `original_currency = "EUR"` = `preferred_currency`. По инварианту `amount = original_amount × exchange_rate` это давало несогласованность (4 500 × 1.08 ≠ 4 500). Кросс-валютных транзакций не было вообще.
+
+**Исправление** (`seed_data.py`):
+- Для EUR-транзакций user2 установлен корректный `exchange_rate = 1.0` (EUR → EUR).
+- Добавлено три кросс-валютных транзакции в USD с `exchange_rate = 0.92` (EUR/USD ≈ 0.92, т.е. 1 USD = 0.92 EUR): отель, онлайн-покупка и фриланс-платёж от USD-клиента. Каждая транзакция хранит `original_amount` (в USD), `exchange_rate` (0.92) и `amount` (в EUR = `original_amount × 0.92`).
+
+---
+
 ## Итоговое состояние
 
 - ✅ Все общие требования выполнены (CRUD, поиск/фильтрация, дашборд, пагинация, адаптивная вёрстка)

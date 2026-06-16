@@ -26,7 +26,7 @@ ChartJS.register(
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-export default function MonthlyTrendChart({ data = [] }) {
+export default function MonthlyTrendChart({ data = [], currency = 'USD' }) {
   if (!data || data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-48 text-slate-400">
@@ -75,7 +75,7 @@ export default function MonthlyTrendChart({ data = [] }) {
   const formatCurrency = (val) =>
     new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency,
       notation: 'compact',
       maximumFractionDigits: 1,
     }).format(val)
@@ -106,7 +106,7 @@ export default function MonthlyTrendChart({ data = [] }) {
           label: (ctx) => {
             const formatted = new Intl.NumberFormat('en-US', {
               style: 'currency',
-              currency: 'USD',
+              currency,
               minimumFractionDigits: 2,
             }).format(ctx.parsed.y)
             return ` ${ctx.dataset.label}: ${formatted}`
