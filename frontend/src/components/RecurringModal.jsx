@@ -74,7 +74,7 @@ export default function RecurringModal({ isOpen, onClose, recurring }) {
     setLoading(true)
 
     const payload = {
-      category_id: parseInt(form.category_id),
+      category_id: form.category_id,
       type: form.type,
       amount: parseFloat(form.amount),
       currency: form.currency,

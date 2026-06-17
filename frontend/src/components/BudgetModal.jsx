@@ -67,7 +67,7 @@ export default function BudgetModal({ isOpen, onClose, budget }) {
     setLoading(true)
 
     const payload = {
-      category_id: parseInt(form.category_id),
+      category_id: form.category_id,
       year: parseInt(form.year),
       month: parseInt(form.month),
       limit_amount: parseFloat(form.limit_amount),
