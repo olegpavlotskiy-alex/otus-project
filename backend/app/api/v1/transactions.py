@@ -37,12 +37,25 @@ def _model_to_dict(obj) -> dict:
 
 @router.get("/export")
 def export_transactions(
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category_id: str | None = Query(default=None),
+    type: str | None = Query(default=None),
+    amount_min: float | None = Query(default=None),
+    amount_max: float | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from app.schemas.transaction import TransactionFilter
-
-    filters = TransactionFilter(page=1, size=10000)
+    filters = TransactionFilter(
+        date_from=date_from,
+        date_to=date_to,
+        category_id=category_id,
+        type=type,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        page=1,
+        size=10000,
+    )
     items, _ = transaction_crud.get_filtered(db, current_user.id, filters)
     csv_content = csv_service.export_transactions(items)
 

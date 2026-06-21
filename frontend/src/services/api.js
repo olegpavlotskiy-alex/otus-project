@@ -95,8 +95,9 @@ export const importTransactions = async (file, mapping) => {
   return data
 }
 
-export const exportTransactions = async () => {
+export const exportTransactions = async (params = {}) => {
   const response = await api.get('/api/v1/transactions/export', {
+    params,
     responseType: 'blob',
   })
   return response

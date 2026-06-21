@@ -100,7 +100,10 @@ export default function Transactions() {
 
   const handleExport = async () => {
     try {
-      const response = await exportTransactions()
+      const params = Object.fromEntries(
+        Object.entries(appliedFilters).filter(([, v]) => v !== '')
+      )
+      const response = await exportTransactions(params)
       const url = URL.createObjectURL(response.data)
       const a = document.createElement('a')
       a.href = url
