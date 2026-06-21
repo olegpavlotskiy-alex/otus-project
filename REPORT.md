@@ -221,6 +221,23 @@
 
 ---
 
+## Баг экспорта CSV (найден при анализе кода) — Исправлено
+
+### 12. Экспорт CSV выгружал все транзакции, игнорируя активные фильтры ✅ Исправлено
+
+**Проблема**: два независимых дефекта — бэкенд и фронтенд.
+
+1. Эндпоинт `GET /api/v1/transactions/export` не принимал никаких query-параметров. `TransactionFilter` создавался с жёстко захардкоженными `page=1, size=10000` без каких-либо условий фильтрации — все транзакции пользователя всегда выгружались целиком.
+
+2. Функция `exportTransactions()` в `api.js` не принимала параметры и не передавала query string на сервер. `handleExport` в `Transactions.jsx` вызывал её без `appliedFilters` — даже если бы сервер и принимал параметры, фронтенд их не отправлял.
+
+**Исправление**:
+- `backend/app/api/v1/transactions.py`: эндпоинт `/export` получил те же query-параметры, что и `GET /transactions` (`date_from`, `date_to`, `category_id`, `type`, `amount_min`, `amount_max`), и строит из них `TransactionFilter`. Лишний локальный импорт `TransactionFilter` внутри тела функции удалён.
+- `frontend/src/services/api.js`: `exportTransactions(params = {})` принимает параметры и передаёт их в axios как `params`.
+- `frontend/src/pages/Transactions.jsx`: `handleExport` строит объект из `appliedFilters` (пустые значения отфильтровываются) и передаёт его в `exportTransactions`.
+
+---
+
 ## Итоговое состояние
 
 - ✅ Все общие требования выполнены (CRUD, поиск/фильтрация, дашборд, пагинация, адаптивная вёрстка)
